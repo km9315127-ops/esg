@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>畜舍負載、太陽光電與儲能容量評估系統</title>
+<style>
+:root{
+  --bg:#f4f7f9; --card:#ffffff; --ink:#18323f; --muted:#607883;
+  --line:#d9e3e8; --accent:#0f766e; --accent2:#0b5f59; --warn:#b45309;
+  --danger:#b91c1c; --good:#166534;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:linear-gradient(135deg,#0f766e,#164e63);color:#fff;padding:28px 20px}
+header .wrap{max-width:1400px;margin:auto}
+h1{margin:0 0 8px;font-size:30px}
+.sub{opacity:.9;font-size:15px;line-height:1.7}
+main{max-width:1400px;margin:20px auto;padding:0 16px 40px}
+.grid{display:grid;grid-template-columns:1.25fr .75fr;gap:18px}
+@media(max-width:1050px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 6px 18px rgba(17,24,39,.05)}
+.card h2{margin:0 0 14px;font-size:20px}
+.card h3{margin:18px 0 10px;font-size:16px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent2)}
+.btn-secondary{background:#e8f3f2;color:#145c57}
+.btn-danger{background:#fee2e2;color:var(--danger)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:center;vertical-align:middle}
+th{background:#f8fafb;position:sticky;top:0;z-index:1}
+input,select{width:100%;padding:8px 9px;border:1px solid #cbd5dc;border-radius:8px;background:#fff;color:#17323f}
+input[type=checkbox]{width:auto;transform:scale(1.15)}
+.small{font-size:12px;color:var(--muted)}
+.kpi{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.kpi .box{border:1px solid var(--line);border-radius:12px;padding:14px;background:#fbfdfd}
+.kpi .label{font-size:12px;color:var(--muted)}
+.kpi .value{font-size:24px;font-weight:800;margin-top:4px}
+.params{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.params label{font-size:12px;color:var(--muted);display:block}
+.params input{margin-top:4px}
+.result{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.result .rbox{border-radius:14px;padding:16px;border:1px solid var(--line)}
+.pv{background:#fff7ed}.bat{background:#eff6ff}.energy{background:#ecfdf5}.peak{background:#fef2f2}
+.rtitle{font-size:13px;color:#526875}.rvalue{font-size:28px;font-weight:900;margin-top:6px}
+.note{padding:12px;border-radius:10px;background:#f8fafc;border-left:4px solid var(--accent);font-size:13px;line-height:1.7}
+.warn{border-left-color:var(--warn);background:#fff7ed}
+.footer-note{font-size:12px;color:var(--muted);line-height:1.7;margin-top:10px}
+.scroll{overflow:auto;max-height:520px;border:1px solid var(--line);border-radius:12px}
+.tag{display:inline-block;padding:3px 8px;border-radius:999px;font-size:11px;background:#e8f3f2;color:#145c57}
+hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>畜舍負載 × 太陽光電 × 儲能容量評估系統</h1>
+    <div class="sub">
+      逐項輸入風扇、水簾、抽水泵、照明、餵飼、冷卻、加熱、擠乳、空壓或其他設備，
+      系統將估算畜舍每日用電量、同時尖峰負載、建議 PV 容量與儲能電池容量。
+    </div>
+  </div>
+</header>
+
+<main>
+<div class="grid">
+  <section class="card">
+    <h2>① 畜舍設備負載盤點</h2>
+    <div class="actions">
+      <button class="btn-primary" onclick="addRow()">＋新增設備</button>
+      <button class="btn-secondary" onclick="loadExample()">載入範例</button>
+      <button class="btn-secondary" onclick="exportCSV()">匯出 CSV</button>
+      <button class="btn-danger" onclick="clearRows()">清除全部</button>
+    </div>
+
+    <div class="scroll">
+      <table id="loadTable">
+        <thead>
+          <tr>
+            <th style="min-width:130px">設備名稱</th>
+            <th style="min-width:85px">單台功率<br>(kW)</th>
+            <th style="min-width:70px">數量</th>
+            <th style="min-width:90px">每日時數<br>(h/day)</th>
+            <th style="min-width:90px">負載率<br>(%)</th>
+            <th style="min-width:90px">同時率<br>(%)</th>
+            <th style="min-width:75px">關鍵負載</th>
+            <th style="min-width:85px">日用電<br>(kWh)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="footer-note">
+      「負載率」代表設備實際平均負載相對額定功率之比例；「同時率」用於估算多台設備可能同時運轉造成的尖峰需求。
+      若無實測資料，馬達類設備可先用 70–90% 負載率，視場域再修正。
+    </div>
+  </section>
+
+  <aside class="card">
+    <h2>② 系統設計條件</h2>
+    <div class="params">
+      <label>有效日照時數 PSH
+        <input id="psh" type="number" step="0.1" value="4.0" min="1">
+      </label>
+      <label>PV 系統總效率 (%)
+        <input id="pvEff" type="number" step="1" value="78" min="40" max="95">
+      </label>
+      <label>希望 PV 涵蓋日用電 (%)
+        <input id="pvCover" type="number" step="1" value="80" min="0" max="150">
+      </label>
+      <label>設計裕度 (%)
+        <input id="margin" type="number" step="1" value="15" min="0" max="100">
+      </label>
+      <label>儲能備援時數 (h)
+        <input id="backupHours" type="number" step="0.5" value="4" min="0">
+      </label>
+      <label>電池可用 DoD (%)
+        <input id="dod" type="number" step="1" value="80" min="20" max="100">
+      </label>
+      <label>PCS/電池往返效率 (%)
+        <input id="batEff" type="number" step="1" value="90" min="50" max="99">
+      </label>
+      <label>關鍵負載備援比例 (%)
+        <input id="criticalFactor" type="number" step="1" value="100" min="0" max="100">
+      </label>
+      <label>尖峰削減目標 (%)
+        <input id="peakShave" type="number" step="1" value="20" min="0" max="100">
+      </label>
+      <label>PV→電池每日可充電比例 (%)
+        <input id="chargeFrac" type="number" step="1" value="30" min="0" max="100">
+      </label>
+    </div>
+
+    <div class="actions" style="margin-top:14px">
+      <button class="btn-primary" onclick="calcAll()">重新計算</button>
+    </div>
+
+    <div class="note">
+      建議先以「日用電需求」估 PV，再以「關鍵負載備援＋尖峰削減」估儲能。
+      正式工程設計仍應再納入 15 分鐘需量、季節性、啟動電流、電池 C-rate、PCS 容量及台電併網限制。
+    </div>
+  </aside>
+</div>
+
+<div class="grid" style="margin-top:18px">
+  <section class="card">
+    <h2>③ 負載彙整結果</h2>
+    <div class="kpi">
+      <div class="box"><div class="label">設備裝置容量</div><div class="value" id="installedKW">0.0 kW</div></div>
+      <div class="box"><div class="label">估算同時尖峰負載</div><div class="value" id="peakKW">0.0 kW</div></div>
+      <div class="box"><div class="label">每日總用電量</div><div class="value" id="dailyKWh">0.0 kWh/day</div></div>
+      <div class="box"><div class="label">每日關鍵負載用電</div><div class="value" id="criticalKWh">0.0 kWh/day</div></div>
+    </div>
+
+    <h3>評估解讀</h3>
+    <div id="analysisText" class="note">請先輸入設備資料。</div>
+  </section>
+
+  <section class="card">
+    <h2>④ 建議 PV 與儲能容量</h2>
+    <div class="result">
+      <div class="rbox pv"><div class="rtitle">建議太陽光電容量</div><div class="rvalue" id="pvKWp">0.0 kWp</div></div>
+      <div class="rbox bat"><div class="rtitle">建議電池名目容量</div><div class="rvalue" id="batKWh">0.0 kWh</div></div>
+      <div class="rbox peak"><div class="rtitle">建議 PCS 輸出功率</div><div class="rvalue" id="pcsKW">0.0 kW</div></div>
+      <div class="rbox energy"><div class="rtitle">估算 PV 日發電量</div><div class="rvalue" id="pvDaily">0.0 kWh/day</div></div>
+    </div>
+
+    <h3>設計拆解</h3>
+    <div id="designText" class="note warn">尚未計算。</div>
+  </section>
+</div>
+</main>
+
+<script>
+let rowId = 0;
+
+function num(v){ const x=parseFloat(v); return isNaN(x)?0:x; }
+function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
+
+function addRow(data={}){
+  rowId++;
+  const tr=document.createElement('tr');
+  tr.dataset.id=rowId;
+  tr.innerHTML=`
+    <td><input class="name" value="${data.name||''}" placeholder="如：通風風扇"></td>
+    <td><input class="kw" type="number" step="0.01" min="0" value="${data.kw??''}"></td>
+    <td><input class="qty" type="number" step="1" min="1" value="${data.qty??1}"></td>
+    <td><input class="hours" type="number" step="0.1" min="0" max="24" value="${data.hours??0}"></td>
+    <td><input class="load" type="number" step="1" min="0" max="100" value="${data.load??80}"></td>
+    <td><input class="sim" type="number" step="1" min="0" max="100" value="${data.sim??80}"></td>
+    <td><input class="critical" type="checkbox" ${data.critical?'checked':''}></td>
+    <td class="rowEnergy">0.0</td>
+    <td><button class="btn-danger" onclick="this.closest('tr').remove();calcAll()">刪除</button></td>`;
+  tr.querySelectorAll('input').forEach(i=>i.addEventListener('input',calcAll));
+  document.getElementById('tbody').appendChild(tr);
+  calcAll();
+}
+
+function clearRows(){
+  document.getElementById('tbody').innerHTML='';
+  calcAll();
+}
+
+function loadExample(){
+  clearRows();
+  [
+    {name:'通風風扇',kw:1.5,qty:12,hours:14,load:85,sim:90,critical:true},
+    {name:'水簾循環泵',kw:2.2,qty:2,hours:10,load:80,sim:100,critical:true},
+    {name:'抽水泵浦',kw:3.7,qty:2,hours:3,load:75,sim:50,critical:true},
+    {name:'自動餵飼系統',kw:2.2,qty:2,hours:2,load:70,sim:100,critical:false},
+    {name:'照明',kw:0.04,qty:40,hours:8,load:100,sim:100,critical:false},
+    {name:'控制與監控系統',kw:0.35,qty:1,hours:24,load:100,sim:100,critical:true}
+  ].forEach(addRow);
+}
+
+function calcAll(){
+  let installed=0, peak=0, daily=0, criticalDaily=0, criticalPeak=0;
+  document.querySelectorAll('#tbody tr').forEach(tr=>{
+    const kw=num(tr.querySelector('.kw').value);
+    const qty=num(tr.querySelector('.qty').value);
+    const hours=clamp(num(tr.querySelector('.hours').value),0,24);
+    const load=clamp(num(tr.querySelector('.load').value),0,100)/100;
+    const sim=clamp(num(tr.querySelector('.sim').value),0,100)/100;
+    const critical=tr.querySelector('.critical').checked;
+
+    const inst=kw*qty;
+    const e=inst*hours*load;
+    const p=inst*load*sim;
+    installed += inst;
+    daily += e;
+    peak += p;
+    if(critical){ criticalDaily += e; criticalPeak += p; }
+    tr.querySelector('.rowEnergy').textContent=e.toFixed(1);
+  });
+
+  const psh=Math.max(0.1,num(document.getElementById('psh').value));
+  const pvEff=clamp(num(document.getElementById('pvEff').value),1,100)/100;
+  const pvCover=clamp(num(document.getElementById('pvCover').value),0,200)/100;
+  const margin=clamp(num(document.getElementById('margin').value),0,200)/100;
+  const backupHours=Math.max(0,num(document.getElementById('backupHours').value));
+  const dod=clamp(num(document.getElementById('dod').value),1,100)/100;
+  const batEff=clamp(num(document.getElementById('batEff').value),1,100)/100;
+  const criticalFactor=clamp(num(document.getElementById('criticalFactor').value),0,100)/100;
+  const peakShave=clamp(num(document.getElementById('peakShave').value),0,100)/100;
+  const chargeFrac=clamp(num(document.getElementById('chargeFrac').value),0,100)/100;
+
+  const targetPVEnergy=daily*pvCover;
+  const pvKWp = targetPVEnergy/(psh*pvEff) * (1+margin);
+  const pvDaily = pvKWp*psh*pvEff;
+
+  // 備援需求：以關鍵尖峰 kW × 備援時數為主，避免直接使用全天關鍵負載過度放大
+  const backupUsable = criticalPeak * backupHours * criticalFactor;
+  // 削峰需求：假設需要支撐 2 小時削峰
+  const shaveUsable = peak * peakShave * 2;
+  // PV 能量移轉：以每日 PV 發電量的一部分轉移至夜間/非日照時段
+  const shiftUsable = pvDaily * chargeFrac;
+  const usableNeed = Math.max(backupUsable, shaveUsable, shiftUsable);
+  const batKWh = usableNeed/(dod*batEff) * (1+margin);
+
+  // PCS 取關鍵尖峰或削峰功率較大者，另加設計裕度
+  const pcsBase = Math.max(criticalPeak*criticalFactor, peak*peakShave);
+  const pcsKW = pcsBase*(1+margin);
+
+  document.getElementById('installedKW').textContent=installed.toFixed(1)+' kW';
+  document.getElementById('peakKW').textContent=peak.toFixed(1)+' kW';
+  document.getElementById('dailyKWh').textContent=daily.toFixed(1)+' kWh/day';
+  document.getElementById('criticalKWh').textContent=criticalDaily.toFixed(1)+' kWh/day';
+  document.getElementById('pvKWp').textContent=pvKWp.toFixed(1)+' kWp';
+  document.getElementById('batKWh').textContent=batKWh.toFixed(1)+' kWh';
+  document.getElementById('pcsKW').textContent=pcsKW.toFixed(1)+' kW';
+  document.getElementById('pvDaily').textContent=pvDaily.toFixed(1)+' kWh/day';
+
+  let level='低負載';
+  if(peak>=100) level='大型畜舍／高尖峰負載';
+  else if(peak>=50) level='中大型畜舍';
+  else if(peak>=20) level='中型畜舍';
+  else if(peak>=5) level='小型畜舍';
+
+  document.getElementById('analysisText').innerHTML=
+    `目前設備總裝置容量約 <b>${installed.toFixed(1)} kW</b>，依各設備負載率與同時率估算，
+     同時尖峰約 <b>${peak.toFixed(1)} kW</b>，屬於「${level}」型態。每日總用電約
+     <b>${daily.toFixed(1)} kWh</b>，其中關鍵負載約 <b>${criticalDaily.toFixed(1)} kWh/day</b>。
+     正式規劃時，建議再以 15 分鐘需量、夏季高溫日與最大畜養量情境做壓力測試。`;
+
+  const driver = usableNeed===backupUsable?'關鍵負載備援':
+                 usableNeed===shaveUsable?'尖峰削減':'PV 能量移轉';
+  document.getElementById('designText').innerHTML=
+    `PV 依「每日用電 × PV 涵蓋率 ÷ PSH ÷ 系統效率」估算，再加入設計裕度，
+     建議約 <b>${pvKWp.toFixed(1)} kWp</b>。<br>
+     儲能同時計算：①關鍵負載備援 ${backupUsable.toFixed(1)} kWh、
+     ②尖峰削減 ${shaveUsable.toFixed(1)} kWh、③PV 能量移轉 ${shiftUsable.toFixed(1)} kWh，
+     目前由 <b>${driver}</b> 主導容量需求；考量 DoD、效率與裕度後，建議電池名目容量約
+     <b>${batKWh.toFixed(1)} kWh</b>，PCS 建議至少 <b>${pcsKW.toFixed(1)} kW</b>。`;
+}
+
+function exportCSV(){
+  const rows=[['設備名稱','單台功率(kW)','數量','每日時數(h)','負載率(%)','同時率(%)','關鍵負載','日用電(kWh)']];
+  document.querySelectorAll('#tbody tr').forEach(tr=>{
+    const kw=num(tr.querySelector('.kw').value), qty=num(tr.querySelector('.qty').value),
+          hours=num(tr.querySelector('.hours').value), load=num(tr.querySelector('.load').value),
+          sim=num(tr.querySelector('.sim').value), critical=tr.querySelector('.critical').checked?'是':'否';
+    const e=kw*qty*hours*(load/100);
+    rows.push([tr.querySelector('.name').value,kw,qty,hours,load,sim,critical,e.toFixed(2)]);
+  });
+  const csv='\ufeff'+rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='畜舍負載盤點.csv'; a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+['psh','pvEff','pvCover','margin','backupHours','dod','batEff','criticalFactor','peakShave','chargeFrac']
+.forEach(id=>document.getElementById(id).addEventListener('input',calcAll));
+
+loadExample();
+</script>
+</body>
+</html>
